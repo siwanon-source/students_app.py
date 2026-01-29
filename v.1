@@ -1,0 +1,183 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+import os
+
+import firebase_admin
+from firebase_admin import credentials, firestore
+
+# =========================
+# Firestore init
+# =========================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+KEY_PATH = os.path.join(BASE_DIR, "serviceAccountKey.json")
+
+if not firebase_admin._apps:
+    cred = credentials.Certificate(KEY_PATH)
+    firebase_admin.initialize_app(cred)
+
+db = firestore.client()
+COLLECTION = "students"
+
+# =========================
+# Functions (Firestore CRUD)
+# =========================
+def fetch_data():
+    # clear table
+    for row in tree.get_children():
+        tree.delete(row)
+
+    # read all docs
+    try:
+        docs = db.collection(COLLECTION).stream()
+        for d in docs:
+            data = d.to_dict() or {}
+            tree.insert("", "end", values=(
+                d.id,
+                data.get("name", ""),
+                data.get("age", ""),
+                data.get("major", ""),
+            ))
+    except Exception as e:
+        messagebox.showerror("Error", f"อ่านข้อมูลไม่ได้: {e}")
+
+def add_data():
+    name = name_var.get().strip()
+    age = age_var.get().strip()
+    major = major_var.get().strip()
+
+    if not name or not age or not major:
+        messagebox.showwarning("Warning", "กรุณากรอกข้อมูลให้ครบ")
+        return
+
+    try:
+        age_int = int(age)
+    except:
+        messagebox.showwarning("Warning", "Age ต้องเป็นตัวเลขจำนวนเต็ม")
+        return
+
+    try:
+        db.collection(COLLECTION).add({
+            "name": name,
+            "age": age_int,
+            "major": major
+        })
+        fetch_data()
+        clear_form()
+    except Exception as e:
+        messagebox.showerror("Error", f"เพิ่มข้อมูลไม่ได้: {e}")
+
+def update_data():
+    selected = tree.focus()
+    if not selected:
+        messagebox.showwarning("Warning", "กรุณาเลือกข้อมูล")
+        return
+
+    doc_id, _, _, _ = tree.item(selected, "values")
+
+    name = name_var.get().strip()
+    age = age_var.get().strip()
+    major = major_var.get().strip()
+
+    if not name or not age or not major:
+        messagebox.showwarning("Warning", "กรุณากรอกข้อมูลให้ครบ")
+        return
+
+    try:
+        age_int = int(age)
+    except:
+        messagebox.showwarning("Warning", "Age ต้องเป็นตัวเลขจำนวนเต็ม")
+        return
+
+    try:
+        db.collection(COLLECTION).document(doc_id).update({
+            "name": name,
+            "age": age_int,
+            "major": major
+        })
+        fetch_data()
+        clear_form()
+    except Exception as e:
+        messagebox.showerror("Error", f"แก้ไขข้อมูลไม่ได้: {e}")
+
+def delete_data():
+    selected = tree.focus()
+    if not selected:
+        messagebox.showwarning("Warning", "กรุณาเลือกข้อมูล")
+        return
+
+    doc_id, _, _, _ = tree.item(selected, "values")
+
+    if not messagebox.askyesno("Confirm", "ต้องการลบข้อมูลนี้ใช่ไหม?"):
+        return
+
+    try:
+        db.collection(COLLECTION).document(doc_id).delete()
+        fetch_data()
+        clear_form()
+    except Exception as e:
+        messagebox.showerror("Error", f"ลบข้อมูลไม่ได้: {e}")
+
+def clear_form():
+    name_var.set("")
+    age_var.set("")
+    major_var.set("")
+
+def select_item(event):
+    selected = tree.focus()
+    if selected:
+        doc_id, name, age, major = tree.item(selected, "values")
+        name_var.set(name)
+        age_var.set(age)
+        major_var.set(major)
+
+# =========================
+# UI (Tkinter)
+# =========================
+root = tk.Tk()
+root.title("CRUD Tkinter - Firestore (students)")
+root.geometry("780x420")
+
+name_var = tk.StringVar()
+age_var = tk.StringVar()
+major_var = tk.StringVar()
+
+frame_form = tk.Frame(root)
+frame_form.pack(pady=10)
+
+tk.Label(frame_form, text="Name").grid(row=0, column=0, sticky="w")
+tk.Entry(frame_form, textvariable=name_var, width=30).grid(row=0, column=1, padx=6)
+
+tk.Label(frame_form, text="Age").grid(row=1, column=0, sticky="w")
+tk.Entry(frame_form, textvariable=age_var, width=30).grid(row=1, column=1, padx=6)
+
+tk.Label(frame_form, text="Major").grid(row=2, column=0, sticky="w")
+tk.Entry(frame_form, textvariable=major_var, width=30).grid(row=2, column=1, padx=6)
+
+frame_btn = tk.Frame(root)
+frame_btn.pack(pady=10)
+
+tk.Button(frame_btn, text="Add", width=10, command=add_data).grid(row=0, column=0, padx=5)
+tk.Button(frame_btn, text="Update", width=10, command=update_data).grid(row=0, column=1, padx=5)
+tk.Button(frame_btn, text="Delete", width=10, command=delete_data).grid(row=0, column=2, padx=5)
+tk.Button(frame_btn, text="Clear", width=10, command=clear_form).grid(row=0, column=3, padx=5)
+tk.Button(frame_btn, text="Refresh", width=10, command=fetch_data).grid(row=0, column=4, padx=5)
+
+# Table (DocID instead of numeric ID)
+columns = ("DocID", "Name", "Age", "Major")
+tree = ttk.Treeview(root, columns=columns, show="headings")
+tree.pack(fill="both", expand=True, padx=10, pady=5)
+
+tree.heading("DocID", text="DocID")
+tree.heading("Name", text="Name")
+tree.heading("Age", text="Age")
+tree.heading("Major", text="Major")
+
+tree.column("DocID", width=280)
+tree.column("Name", width=200)
+tree.column("Age", width=80, anchor="center")
+tree.column("Major", width=160)
+
+tree.bind("<<TreeviewSelect>>", select_item)
+
+fetch_data()
+root.mainloop()
